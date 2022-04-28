@@ -28,46 +28,78 @@ base_url = 'https://amplitude.com/api/2/export'
 # helper functions
 
 def write_to_csv(single_date, user_durations):
-  print('LOG: writing to csv for ' + single_date)
+  print('INFO: writing to csv for ' + single_date.strftime("%Y%m%d"))
 
-  with open(output_file_name, 'a') as f_object:
-    writer_object = writer(f_object)
-    for user in user_durations:
-      writer_object.writerow([single_date.strftime("%Y-%m-%d"), user, user_durations[user]])
-    f_object.close()
+  with open(output_file_name, 'a') as csv_file:
+    writer_object = writer(csv_file)
+    for user_id in user_durations:
+      writer_object.writerow([single_date.strftime("%Y-%m-%d"), user_id, user_durations[user_id]])
+    csv_file.close()
 
 def process_user_durations(session_durations):
   user_durations = {}
   
   for session_id in session_durations:
     user_id = session_durations[session_id]['user_id']
-    duration = divmod((datetime.fromisoformat(session_durations[session_id]['end']) - datetime.fromisoformat(session_durations[session_id]['start'])).seconds, 60)[0]
+    start = session_durations[session_id]['start']
+    end = session_durations[session_id]['end']
 
-    if duration > 0:
-      if user_id not in user_durations:
-        user_durations[user_id] = duration
-      else:
-        user_durations[user_id] = user_durations[user_id] + duration
-  
+    duration = (end - start).total_seconds() / 60
+
+    if user_id not in user_durations:
+      total_duration = round(duration, 2)
+    else:
+      total_duration = round(user_durations[user_id] + duration, 2)
+
+    if total_duration <= 0:
+      continue
+
+    user_durations[user_id] = total_duration
+
   return user_durations
 
 def process_event_record(line, session_durations, active_user_ids):
   event = json.loads(line)
+
+  if 'user_id' not in event:
+    return
+
   session_id = event['session_id']
-  
-  if 'user_id' in event:
-    if event['user_id'] in active_user_ids:
-      # first entry of a session
-      if session_id not in session_durations:
-        session_durations[session_id] = {
-          'start': event['client_event_time'], 
-          'end': event['client_event_time'],
-          'user_id': event['user_id']
-        } 
-      # get end of session
-      else:
-          if datetime.fromisoformat(event['client_event_time']) > datetime.fromisoformat(session_durations[session_id]['end']):
-            session_durations[session_id]['end'] = event['client_event_time']
+  user_id = event['user_id']
+  event_time = datetime.fromisoformat(event['client_event_time'])
+
+  # only process for active users
+  if user_id not in active_user_ids:
+    return
+
+  # ignore server side "leave call" events
+  if session_id == -1:
+    return
+
+  # adjust event time (ref: https://amplitude.com/blog/dont-trust-client-data)
+  event_time += (datetime.fromisoformat(event['server_upload_time']) - datetime.fromisoformat(event['client_upload_time']))
+
+  # # outlier entries with huge gap between upload and event times
+  if(abs((datetime.fromisoformat(event['client_upload_time']) - event_time).total_seconds()) > 0.9*60*60):
+    event_time = datetime.fromisoformat(event['server_upload_time'])
+
+  # first entry of a session
+  if session_id not in session_durations:
+    session_durations[session_id] = {
+      'start': event_time,
+      'end': event_time,
+      'user_id': user_id
+    }
+  else:
+    start = session_durations[session_id]['start']
+    end = session_durations[session_id]['end']
+
+    # get start of session
+    if event_time < start:
+      session_durations[session_id]['start'] = event_time
+    # get end of session
+    elif event_time > end:
+      session_durations[session_id]['end'] = event_time
 
 def process_session_durations(active_user_ids):
   session_durations = {}
@@ -82,7 +114,7 @@ def process_session_durations(active_user_ids):
   return session_durations
 
 def download_event_data(event_date):
-  print('LOG: downloading data for ' + event_date)
+  print('INFO: downloading data for ' + event_date)
 
   start = event_date + 'T00'
   end = event_date + 'T23'
