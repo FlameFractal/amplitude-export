@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 
 # external libs
 import requests
+from tqdm import tqdm
 
 # configuration
 start_date = date(2021, 4, 1)
@@ -144,7 +145,7 @@ def get_active_users():
 def main():
   active_user_ids = get_active_users()
 
-  for single_date in daterange(start_date, end_date):
+  for single_date in tqdm(daterange(start_date, end_date)):
     event_date = single_date.strftime("%Y%m%d")
 
     download_event_data(event_date)
