@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "amplitude-export"
+version = "0.1.0"
+description = ""
+authors = ["Vishal Gauba <vishal.gauba@gmail.com>"]
+readme = "README.md"
+packages = [{include = "amplitude_export"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.27.1"
+tqdm = "^4.64.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
